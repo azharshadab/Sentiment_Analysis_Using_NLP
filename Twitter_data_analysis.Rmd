@@ -1,0 +1,459 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+Team Member-1: Saffeer Sohani  Member’s Contribution (in %) 33.3
+Team Member-2: Macoura Diabate Member’s Contribution (in %) 33.3
+Team Member-3: Shadab Siddiqui Member’s Contribution (in %) 33.3
+
+```{r}
+#LIBRARIES USED
+
+library(NLP)
+library(tm) #used for text corpus, remove numbers, punctuations etc.
+library(SnowballC) #used for stemming process
+library(wordcloud) #used for visualization of wordcloud
+library(e1071) #used for the Naive Bayes classifier.
+library(gmodels) #used for the Crosstable
+```
+
+
+**Read-in the data. **
+```{r}
+tweeter_raw = read.csv("tweeter_traning.csv")
+
+View(tweeter_raw)
+```
+
+
+
+**Preprocess the data including to create data-term matrix and to separate the data into training set and test set.**
+```{r}
+#Removing the id column as it is of no use.
+tweeter_raw = tweeter_raw[,-1]
+
+
+#Exploring the data
+str(tweeter_raw)
+#Here first columns is of int type, we have to convert the first column in factor as it is our class label.
+#Second column consist the text so it is character type.
+
+
+tweeter_raw$Sentiment <- factor(tweeter_raw$Sentiment)
+#Data column sentiment was in the form of 0 and 1, converting that column in two class as positive & negative.
+tweeter_raw$Sentiment =  ifelse(tweeter_raw$Sentiment == 0, "Negative", "Positive")
+
+# Checking total number of negative & positive 
+
+table(tweeter_raw$Sentiment)
+
+
+#Percentage of each case --> 	This is the baseline
+
+round( prop.table(table(tweeter_raw$Sentiment)) * 100, digits = 1)
+#Here 43.4% is Negative and 56.6% is Positive. We can say that the proportion of data is near to equal distribution.
+```
+
+
+```{r}
+#Data preparation – cleaning and standardizing text data
+
+
+##Step 1:- The first step in processing text data involves creating a text corpus.
+
+
+
+tweeter_corpus <- VCorpus(VectorSource(tweeter_raw$SentimentText))
+
+
+# I did some additional work as I was getting following error at line no 164 while creating Term Document Matrix
+#ERROR: no-applicable-method-for-meta-applied-to-an-object-of-class-character
+a = list()
+for (i in seq_along(tweeter_corpus)) {
+    a[i] <- gettext(tweeter_corpus[[i]][[1]]) #Do not use $content here!
+}
+
+tweeter_raw$SentimentText <- unlist(a) 
+tweeter_corpus <- Corpus(VectorSource(tweeter_raw$SentimentText))
+
+
+
+View(tweeter_corpus)
+#Tabular data structure is not helpful in text mining so that we have to convert it into a corpus.
+
+#Examine the tweeter_corpus
+print(tweeter_corpus) 
+		
+#Inspect the first 2 documents: to check how many chars & metadata in it.
+inspect(tweeter_corpus[1:2])
+		
+#To view an actual message 
+as.character(tweeter_corpus[[1]])
+	
+#To view multiple messages
+lapply(tweeter_corpus[1:2], as.character)
+```
+
+```{r}
+#Text Clean-up: Remove the punctuation, numbers & stop words 
+
+## Converting all the characters into lower case characters to avoid redundancy
+
+tweeter_corpus_clean <- tm_map(tweeter_corpus, content_transformer(tolower))
+
+#tweeter_corpus_clean <- tm_map(tweeter_corpus_clean, PlainTextDocument)
+
+
+## Show the difference between tweeter_corpus and corpus_clean
+
+as.character(tweeter_corpus[[2]])
+as.character(tweeter_corpus_clean[[2]])
+
+##Remove numbers from the TWEETER TEXT by calling removeNumbers()
+
+tweeter_corpus_clean <- tm_map(tweeter_corpus_clean, removeNumbers)
+as.character(tweeter_corpus[[2]])
+as.character(tweeter_corpus_clean[[2]])
+
+##Remove stop words such as to, and, but and or by using removeWords()
+
+#The list of stop words can be found here:
+#stopwords()
+		
+tweeter_corpus_clean <- tm_map(tweeter_corpus_clean, removeWords, stopwords())
+as.character(tweeter_corpus[[1]])
+as.character(tweeter_corpus_clean[[1]])
+
+# Remove punctuation by using the removePunctuation()
+
+replacePunctuation <- function(x) { gsub("[[:punct:]]+", " ", x) }  
+
+
+#Applying the user defined function replacePunctuation() on the data
+tweeter_corpus_clean <- tm_map(tweeter_corpus_clean, replacePunctuation)
+as.character(tweeter_corpus[[1]])
+as.character(tweeter_corpus_clean[[1]])
+
+```
+
+```{r}
+#Reduce words to their root form in a process called stemming.
+
+tweeter_corpus_clean <- tm_map(tweeter_corpus_clean, stemDocument)
+as.character(tweeter_corpus_clean[[1]])
+
+
+#Remove additional white-space by usig function stripWhitespace
+
+tweeter_corpus_clean <- tm_map(tweeter_corpus_clean, stripWhitespace)
+as.character(tweeter_corpus[[1]])
+as.character(tweeter_corpus_clean[[1]])
+```
+
+```{r}
+#Tokenization
+
+#Splitting text documents into words
+
+
+#Create a document-term sparse matrix
+tweeter_dtm <- DocumentTermMatrix(tweeter_corpus_clean)
+tweeter_dtm$ncol #here the column has increased tremendously 
+tweeter_dtm$nrow #it is same
+tweeter_dtm$dimnames$Terms[1:20]
+
+View(tweeter_dtm)
+```
+
+```{r}
+#I have changed this several time. Starting from 75%-25% got the 73.4% at the following distribution
+
+#Creating training (90%) and test (10%) datasets
+nrow(tweeter_raw)
+0.90 * nrow(tweeter_dtm)
+
+tweeter_dtm_train <- tweeter_dtm[1:62992, ]
+tweeter_dtm_test  <- tweeter_dtm[62993:69992, ]
+
+
+#Also save the labels
+tweeter_train_labels <- tweeter_raw[1:62992, ]$Sentiment
+tweeter_test_labels  <- tweeter_raw[62993:69992, ]$Sentiment
+
+#Check that the proportion of Negative & Positive is similar or Not.
+prop.table(table(tweeter_train_labels))
+prop.table(table(tweeter_test_labels))
+
+#Here proportion is almost same.
+
+```
+
+```{r}
+# It was too much data so I gave up visualizing. 
+#Visualize the data 
+# wordcloud(tweeter_corpus_clean, min.freq = 500, random.order = FALSE)
+# 	
+# #Visualize cloud from spam and ham 
+# Negative <- subset(tweeter_raw, Sentiment == "Negative")
+# Positive  <- subset(tweeter_raw, Sentiment == "Positive")
+# 
+# wordcloud(Negative$text, max.words = 40, scale = c(3, 0.5))
+# wordcloud(Positive$text, max.words = 40, scale = c(3, 0.5))
+```
+
+```{r}
+#Reduce Dimensionality 
+
+#As there are almost 67913 features, we have to remove the words which has frequency less than 10 in training data.
+
+tweeter_dtm$ncol
+tweeter_freq_words <- findFreqTerms(tweeter_dtm_train, 10)
+tweeter_freq_words[1:10]
+
+#Create DTMs with only the frequent terms (i.e., words appearing at least 10 times)
+tweeter_dtm_freq_train <- tweeter_dtm_train[ , tweeter_freq_words]
+tweeter_dtm_freq_test <- tweeter_dtm_test[ , tweeter_freq_words]
+tweeter_dtm_freq_train$ncol
+
+#Earlier it was 67913 which has now reduced to 4114.
+
+#The sparse matrix are numeric and measure the number of times a word appears in a message. 
+#We need to change this to a categorical variable that simply indicates yes or no depending on whether the word appears at all.
+
+#Converting each count into binary of Yes/No
+convert_counts <- function(x) {
+			x <- ifelse(x > 0, "Yes", "No")
+		}
+	
+#apply() convert_counts() to columns of train/test data
+#MARGIN = 2 means applied to columns, MARGIN = 1 means applied to row
+tweeter_train <- apply(tweeter_dtm_freq_train, MARGIN = 2, convert_counts)
+tweeter_test  <- apply(tweeter_dtm_freq_test,  MARGIN = 2, convert_counts)
+#View(tweeter_train)
+```
+
+
+**Apply the Naive Bayes classifier and predict the class labels for the test set. **
+```{r}
+#?naiveBayes
+#Creating the Naive Bayes model
+tweeter_classifier <- naiveBayes(tweeter_train, tweeter_train_labels)
+
+
+#Using the Naive Bayes model for Prediction and Evaluate the model performance 
+tweeter_test_pred <- predict(tweeter_classifier, tweeter_test)
+
+```
+
+
+
+**Evaluate the model performance by comparing it with the ground-truth and generate a cross table as shown below**
+```{r}
+#Groundtruth: are stored in tweeter_test_labels
+#Prediction: are stored in tweeter_test_pred
+#Find agreement between the two vectors i.e. predicted and ground truth
+
+CrossTable(tweeter_test_labels, tweeter_test_pred,
+		        prop.chisq = FALSE,
+            prop.t = FALSE, 
+            prop.r = FALSE,
+            dnn = c('actual', 'predicted'))
+
+#
+
+```
+
+
+**Final Test Data**
+```{r}
+#Reading the test data and exploring
+final_test<- read.csv("tweeter_test.csv")
+str(final_test)
+View(final_test)
+
+```
+
+```{r}
+final_test_corpus<- VCorpus(VectorSource(final_test$SentimentText))
+
+
+#Extra line of codes due to error while creating document term matrix
+a = list()
+for (i in seq_along(final_test_corpus)) {
+    a[i] <- gettext(final_test_corpus[[i]][[1]]) #Do not use $content here!
+}
+
+final_test$SentimentText <- unlist(a) 
+final_test_corpus <- Corpus(VectorSource(final_test$SentimentText))
+
+
+
+
+
+print(final_test_corpus)
+inspect(final_test_corpus[1:2])
+```
+
+
+```{r}
+#Cleaning the data
+
+final_test_corpus_clean <- tm_map(final_test_corpus, content_transformer(tolower))
+
+as.character(final_test_corpus[[4]])
+as.character(final_test_corpus_clean[[1]])
+
+final_test_corpus_clean <- tm_map(final_test_corpus_clean, removeNumbers)
+
+final_test_corpus_clean <- tm_map(final_test_corpus_clean, removeWords, stopwords())
+
+as.character(final_test_corpus_clean[[4]])
+
+
+
+final_test_corpus_clean <- tm_map(final_test_corpus_clean, replacePunctuation)
+
+#show the difference between train_corpus and train_corpus_clean
+as.character(final_test_corpus[[1]])
+as.character(final_test_corpus_clean[[1]])
+
+final_test_corpus_clean <- tm_map(final_test_corpus_clean, stemDocument)
+
+
+
+#Remove additional white-space
+final_test_corpus_clean <- tm_map(final_test_corpus_clean, stripWhitespace)
+
+
+
+#Splitting text documents into words --> tokenization 
+
+#Create Document-Term Matrix (DTM) 
+#Rows indicate documents (text messages)
+#Columns indicate terms (words) 
+		
+#Create a document-term sparse matrix
+
+final_test_dtm <- DocumentTermMatrix(final_test_corpus_clean)
+
+final_test_dtm$ncol
+final_test_dtm$nrow
+final_test_dtm$dimnames$Terms[100]
+
+
+#Reducing Dimensionality
+
+final_test_freq_words <- findFreqTerms(final_test_dtm, 10)
+final_test_freq_words[1:10]
+
+	
+#Create DTMs with only the frequent terms (i.e., words appearing at least 10 times)
+
+final_dtm_freq_test <- final_test_dtm[ , final_test_freq_words]
+final_dtm_freq_test$ncol
+
+#Reduced to 2412 from 37906
+```
+#2.	Construct a Naïve Bayesian model. 
+```{r}
+#Create a naive base classifier by converting categorical variable that simply indicates yes or no depending on whether the word appears at all.
+convert_counts <- function(x) {
+			x <- ifelse(x > 0, "Yes", "No")
+}
+
+Final_test<-apply(final_dtm_freq_test,  MARGIN = 2, convert_counts)
+
+
+
+final_tweeter_classifier <- naiveBayes(tweeter_train, tweeter_train_labels)
+
+
+```
+
+
+
+
+#3.	Predict the class labels for the test set.
+```{r}
+#Predict and Evaluate the model performance 
+tweeter_final_test_pred <- predict(final_tweeter_classifier, Final_test)
+
+## Storing the output data into csv file
+ID <- c(69993:99989)
+Sentiment <- tweeter_final_test_pred
+output_df <- data.frame(ID, Sentiment)
+output_df$Sentiment =  ifelse(output_df$Sentiment == "Negative", 0, 1)
+
+write.csv(file = "tweeter_test_submission_90_10.csv", output_df,row.names = FALSE)
+
+#Got the accuracy of 73.4% on final test set data by this model.
+
+```
+
+
+**Improve the model’s performance adding Laplace corrections and Generate a cross table as shown below. **
+```{r}
+#Use Laplace estimator
+final_tweeter_classifier_lap_1 <- naiveBayes(tweeter_train, tweeter_train_labels, laplace = 1)
+
+tweeter_final_test_pred_lap_1 <- predict(final_tweeter_classifier, Final_test)
+## Storing the output data into csv file
+ID <- c(69993:99989)
+Sentiment <- tweeter_final_test_pred_lap_1
+output_df <- data.frame(ID, Sentiment)
+output_df$Sentiment =  ifelse(output_df$Sentiment == "Negative", 0, 1)
+
+write.csv(file = "tweeter_test_submission_90_10_laplace.csv", output_df,row.names = FALSE)
+
+#It doesn't helped much or we can say no good changes observed after applying the laplace correction.
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
