@@ -61,5 +61,5 @@ accuracy = accuracy_score(y_test, y_pred)
 print(f"Confusion Matrix:\n{conf_matrix}")
 print(f"Accuracy: {accuracy}")
 
-# This script is a direct implementation of the R code provided into Python, focusing on the key steps.
+
 
